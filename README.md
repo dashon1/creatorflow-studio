@@ -16,8 +16,9 @@
 
 ## URLs
 - **Production**: https://creatorflow-studio.pages.dev (deploy pending)
-- **GitHub**: https://github.com/username/creatorflow-studio (configure in deployment)
+- **GitHub**: https://github.com/dashon1/creatorflow-studio
 - **API Endpoint**: https://creatorflow-studio.pages.dev/api
+- **Development**: http://localhost:3000
 
 ## Data Architecture
 
