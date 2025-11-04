@@ -437,26 +437,46 @@ app.get('/api/analytics/dashboard', authMiddleware, async (c) => {
   
   // Get user stats
   const isAdmin = user.role === 'admin' || user.role === 'super_admin'
-  const userCondition = isAdmin ? '' : 'WHERE user_id = ?'
-  const params = isAdmin ? [] : [user.id]
   
-  const stats = await env.DB.prepare(`
-    SELECT
-      (SELECT COUNT(*) FROM workflows ${userCondition}) as total_workflows,
-      (SELECT COUNT(*) FROM workflow_runs ${userCondition}) as total_runs,
-      (SELECT COUNT(*) FROM integrations ${userCondition}) as total_integrations,
-      (SELECT COUNT(*) FROM users WHERE role = 'user') as total_users
-  `).bind(...params).first()
+  let stats
+  if (isAdmin) {
+    stats = await env.DB.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM workflows) as total_workflows,
+        (SELECT COUNT(*) FROM workflow_runs) as total_runs,
+        (SELECT COUNT(*) FROM integrations) as total_integrations,
+        (SELECT COUNT(*) FROM users WHERE role = 'user') as total_users
+    `).first()
+  } else {
+    stats = await env.DB.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM workflows WHERE user_id = ?) as total_workflows,
+        (SELECT COUNT(*) FROM workflow_runs WHERE user_id = ?) as total_runs,
+        (SELECT COUNT(*) FROM integrations WHERE user_id = ?) as total_integrations,
+        0 as total_users
+    `).bind(user.id, user.id, user.id).first()
+  }
   
   // Get recent activity
-  const recentRuns = await env.DB.prepare(`
-    SELECT wr.*, w.name as workflow_name
-    FROM workflow_runs wr
-    JOIN workflows w ON wr.workflow_id = w.id
-    ${userCondition ? userCondition.replace('WHERE', 'WHERE wr.') : ''}
-    ORDER BY wr.created_at DESC
-    LIMIT 10
-  `).bind(...params).all()
+  let recentRuns
+  if (isAdmin) {
+    recentRuns = await env.DB.prepare(`
+      SELECT wr.*, w.name as workflow_name
+      FROM workflow_runs wr
+      JOIN workflows w ON wr.workflow_id = w.id
+      ORDER BY wr.created_at DESC
+      LIMIT 10
+    `).all()
+  } else {
+    recentRuns = await env.DB.prepare(`
+      SELECT wr.*, w.name as workflow_name
+      FROM workflow_runs wr
+      JOIN workflows w ON wr.workflow_id = w.id
+      WHERE wr.user_id = ?
+      ORDER BY wr.created_at DESC
+      LIMIT 10
+    `).bind(user.id).all()
+  }
   
   return c.json({
     stats,
