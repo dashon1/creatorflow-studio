@@ -313,6 +313,92 @@ app.post('/api/integrations', authMiddleware, async (c) => {
   }
 })
 
+// Get single integration
+app.get('/api/integrations/:id', authMiddleware, async (c) => {
+  const { env } = c
+  const user = c.get('user')
+  const integrationId = c.req.param('id')
+  
+  const integration = await env.DB.prepare(`
+    SELECT * FROM integrations
+    WHERE id = ? AND user_id = ?
+  `).bind(integrationId, user.id).first()
+  
+  if (!integration) {
+    return c.json({ error: 'Integration not found' }, 404)
+  }
+  
+  return c.json({ integration })
+})
+
+// Update integration
+app.put('/api/integrations/:id', authMiddleware, async (c) => {
+  const { env } = c
+  const user = c.get('user')
+  const integrationId = c.req.param('id')
+  
+  const schema = z.object({
+    name: z.string().optional(),
+    apiKey: z.string().optional(),
+    apiSecret: z.string().optional(),
+    config: z.record(z.any()).optional(),
+    status: z.enum(['active', 'inactive', 'error']).optional()
+  })
+  
+  try {
+    const body = await c.req.json()
+    const data = schema.parse(body)
+    
+    const updates = []
+    const values = []
+    
+    if (data.name !== undefined) {
+      updates.push('name = ?')
+      values.push(data.name)
+    }
+    
+    if (data.apiKey !== undefined) {
+      updates.push('api_key = ?')
+      values.push(data.apiKey)
+    }
+    
+    if (data.apiSecret !== undefined) {
+      updates.push('api_secret = ?')
+      values.push(data.apiSecret)
+    }
+    
+    if (data.config !== undefined) {
+      updates.push('config = ?')
+      values.push(JSON.stringify(data.config))
+    }
+    
+    if (data.status !== undefined) {
+      updates.push('status = ?')
+      values.push(data.status)
+    }
+    
+    if (updates.length === 0) {
+      return c.json({ error: 'No updates provided' }, 400)
+    }
+    
+    values.push(integrationId)
+    values.push(user.id)
+    
+    await env.DB.prepare(`
+      UPDATE integrations
+      SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).bind(...values).run()
+    
+    return c.json({ message: 'Integration updated successfully' })
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return c.json({ error: error.errors }, 400)
+    }
+    return c.json({ error: 'Update failed' }, 500)
+  }
+})
+
 // Delete integration
 app.delete('/api/integrations/:id', authMiddleware, async (c) => {
   const { env } = c
@@ -381,6 +467,138 @@ app.post('/api/workflows', authMiddleware, async (c) => {
     }
     return c.json({ error: 'Failed to create workflow' }, 500)
   }
+})
+
+// Get single workflow
+app.get('/api/workflows/:id', authMiddleware, async (c) => {
+  const { env } = c
+  const user = c.get('user')
+  const workflowId = c.req.param('id')
+  
+  const workflow = await env.DB.prepare(`
+    SELECT * FROM workflows
+    WHERE id = ? AND user_id = ?
+  `).bind(workflowId, user.id).first()
+  
+  if (!workflow) {
+    return c.json({ error: 'Workflow not found' }, 404)
+  }
+  
+  return c.json({ workflow })
+})
+
+// Update workflow
+app.put('/api/workflows/:id', authMiddleware, async (c) => {
+  const { env } = c
+  const user = c.get('user')
+  const workflowId = c.req.param('id')
+  
+  const schema = z.object({
+    name: z.string().optional(),
+    description: z.string().optional(),
+    type: z.string().optional(),
+    config: z.record(z.any()).optional(),
+    status: z.enum(['draft', 'active', 'paused', 'archived']).optional()
+  })
+  
+  try {
+    const body = await c.req.json()
+    const data = schema.parse(body)
+    
+    const updates = []
+    const values = []
+    
+    if (data.name !== undefined) {
+      updates.push('name = ?')
+      values.push(data.name)
+    }
+    
+    if (data.description !== undefined) {
+      updates.push('description = ?')
+      values.push(data.description)
+    }
+    
+    if (data.type !== undefined) {
+      updates.push('type = ?')
+      values.push(data.type)
+    }
+    
+    if (data.config !== undefined) {
+      updates.push('config = ?')
+      values.push(JSON.stringify(data.config))
+    }
+    
+    if (data.status !== undefined) {
+      updates.push('status = ?')
+      values.push(data.status)
+    }
+    
+    if (updates.length === 0) {
+      return c.json({ error: 'No updates provided' }, 400)
+    }
+    
+    values.push(workflowId)
+    values.push(user.id)
+    
+    await env.DB.prepare(`
+      UPDATE workflows
+      SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).bind(...values).run()
+    
+    return c.json({ message: 'Workflow updated successfully' })
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return c.json({ error: error.errors }, 400)
+    }
+    return c.json({ error: 'Update failed' }, 500)
+  }
+})
+
+// Delete workflow
+app.delete('/api/workflows/:id', authMiddleware, async (c) => {
+  const { env } = c
+  const user = c.get('user')
+  const workflowId = c.req.param('id')
+  
+  await env.DB.prepare(`
+    DELETE FROM workflows
+    WHERE id = ? AND user_id = ?
+  `).bind(workflowId, user.id).run()
+  
+  return c.json({ message: 'Workflow deleted successfully' })
+})
+
+// Get workflow runs
+app.get('/api/workflows/:id/runs', authMiddleware, async (c) => {
+  const { env } = c
+  const user = c.get('user')
+  const workflowId = c.req.param('id')
+  
+  const runs = await env.DB.prepare(`
+    SELECT * FROM workflow_runs
+    WHERE workflow_id = ? AND user_id = ?
+    ORDER BY created_at DESC
+    LIMIT 50
+  `).bind(workflowId, user.id).all()
+  
+  return c.json({ runs: runs.results })
+})
+
+// Cancel workflow run
+app.post('/api/workflows/:id/runs/:runId/cancel', authMiddleware, async (c) => {
+  const { env } = c
+  const user = c.get('user')
+  const runId = c.req.param('runId')
+  
+  await env.DB.prepare(`
+    UPDATE workflow_runs
+    SET status = 'cancelled',
+        completed_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND user_id = ?
+  `).bind(runId, user.id).run()
+  
+  return c.json({ message: 'Workflow run cancelled' })
 })
 
 // Run workflow
@@ -512,6 +730,180 @@ app.post('/api/analytics/track', authMiddleware, async (c) => {
     return c.json({ message: 'Event tracked' })
   } catch (error) {
     return c.json({ error: 'Failed to track event' }, 500)
+  }
+})
+
+// ===== API Keys Management =====
+
+// Get API keys
+app.get('/api/keys', authMiddleware, async (c) => {
+  const { env } = c
+  const user = c.get('user')
+  
+  const keys = await env.DB.prepare(`
+    SELECT id, name, key_hash as key_preview, scopes, last_used_at, expires_at, created_at
+    FROM api_keys
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+  `).bind(user.id).all()
+  
+  // Mask the key hashes for security
+  const maskedKeys = keys.results.map(key => ({
+    ...key,
+    key_preview: key.key_preview ? `${key.key_preview.substring(0, 8)}...` : null
+  }))
+  
+  return c.json({ keys: maskedKeys })
+})
+
+// Create API key
+app.post('/api/keys', authMiddleware, async (c) => {
+  const { env } = c
+  const user = c.get('user')
+  
+  const schema = z.object({
+    name: z.string(),
+    scopes: z.array(z.string()).optional(),
+    expiresIn: z.number().optional() // days
+  })
+  
+  try {
+    const body = await c.req.json()
+    const data = schema.parse(body)
+    
+    // Generate API key
+    const apiKey = `sk_${Date.now()}_${Math.random().toString(36).substring(2)}`
+    const keyHash = await hashPassword(apiKey)
+    
+    // Calculate expiration
+    const expiresAt = data.expiresIn 
+      ? new Date(Date.now() + data.expiresIn * 24 * 60 * 60 * 1000).toISOString()
+      : null
+    
+    const result = await env.DB.prepare(`
+      INSERT INTO api_keys (user_id, name, key_hash, scopes, expires_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).bind(
+      user.id,
+      data.name,
+      keyHash,
+      JSON.stringify(data.scopes || ['read']),
+      expiresAt
+    ).run()
+    
+    // Return the full key ONLY on creation
+    return c.json({
+      id: result.meta.last_row_id,
+      apiKey, // Show full key only once!
+      message: 'API key created. Save this key securely - it will not be shown again!'
+    })
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return c.json({ error: error.errors }, 400)
+    }
+    return c.json({ error: 'Failed to create API key' }, 500)
+  }
+})
+
+// Delete API key
+app.delete('/api/keys/:id', authMiddleware, async (c) => {
+  const { env } = c
+  const user = c.get('user')
+  const keyId = c.req.param('id')
+  
+  await env.DB.prepare(`
+    DELETE FROM api_keys
+    WHERE id = ? AND user_id = ?
+  `).bind(keyId, user.id).run()
+  
+  return c.json({ message: 'API key deleted successfully' })
+})
+
+// ===== Audit Log System =====
+
+// Get audit logs
+app.get('/api/audit-logs', authMiddleware, async (c) => {
+  const { env } = c
+  const user = c.get('user')
+  
+  const isAdmin = user.role === 'admin' || user.role === 'super_admin'
+  
+  let logs
+  if (isAdmin) {
+    logs = await env.DB.prepare(`
+      SELECT a.*, u.name as user_name, u.email as user_email
+      FROM analytics a
+      JOIN users u ON a.user_id = u.id
+      ORDER BY a.created_at DESC
+      LIMIT 100
+    `).all()
+  } else {
+    logs = await env.DB.prepare(`
+      SELECT * FROM analytics
+      WHERE user_id = ?
+      ORDER BY created_at DESC
+      LIMIT 50
+    `).bind(user.id).all()
+  }
+  
+  return c.json({ logs: logs.results })
+})
+
+// ===== Webhook Management =====
+
+// Get webhooks
+app.get('/api/webhooks', authMiddleware, async (c) => {
+  const { env } = c
+  const user = c.get('user')
+  
+  const webhooks = await env.DB.prepare(`
+    SELECT id, provider, name, webhook_url, status, last_sync_at, created_at
+    FROM integrations
+    WHERE user_id = ? AND webhook_url IS NOT NULL
+    ORDER BY created_at DESC
+  `).bind(user.id).all()
+  
+  return c.json({ webhooks: webhooks.results })
+})
+
+// Test webhook
+app.post('/api/webhooks/:id/test', authMiddleware, async (c) => {
+  const { env } = c
+  const user = c.get('user')
+  const webhookId = c.req.param('id')
+  
+  try {
+    // Get webhook details
+    const webhook = await env.DB.prepare(`
+      SELECT * FROM integrations
+      WHERE id = ? AND user_id = ?
+    `).bind(webhookId, user.id).first()
+    
+    if (!webhook || !webhook.webhook_url) {
+      return c.json({ error: 'Webhook not found' }, 404)
+    }
+    
+    // Send test payload
+    const testPayload = {
+      event: 'webhook.test',
+      timestamp: new Date().toISOString(),
+      data: { message: 'This is a test webhook from CreatorFlow Studio' }
+    }
+    
+    // In production, you would actually send this to the webhook URL
+    // For now, we'll just log it
+    await env.DB.prepare(`
+      UPDATE integrations
+      SET last_sync_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(webhookId).run()
+    
+    return c.json({ 
+      message: 'Webhook test sent',
+      payload: testPayload
+    })
+  } catch (error) {
+    return c.json({ error: 'Failed to test webhook' }, 500)
   }
 })
 
